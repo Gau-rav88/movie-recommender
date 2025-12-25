@@ -1,0 +1,13 @@
+# Virtual environment
+venv/
+
+# Secrets
+.env
+.streamlit/
+
+# Large data files
+movie_data.pkl
+
+# Python cache
+__pycache__/
+*.pyc
