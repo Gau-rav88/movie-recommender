@@ -1,21 +1,65 @@
 import streamlit as st
 import pandas as pd
 import requests
-import pickle
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+@st.cache_data
+def load_and_process_data():
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
+
+    movies = movies.merge(credits, on="title")
+    movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
+
+    def convert(text):
+        return [i['name'] for i in ast.literal_eval(text)]
+
+    movies['genres'] = movies['genres'].apply(convert)
+    movies['keywords'] = movies['keywords'].apply(convert)
+    movies['cast'] = movies['cast'].apply(
+        lambda x: [i['name'] for i in ast.literal_eval(x)[:3]]
+    )
+
+    def fetch_director(text):
+        for i in ast.literal_eval(text):
+            if i['job'] == 'Director':
+                return i['name']
+        return ""
+
+    movies['crew'] = movies['crew'].apply(fetch_director)
+
+    movies['tags'] = (
+        movies['overview'].fillna('') +
+        movies['genres'].apply(lambda x: " ".join(x)) +
+        movies['keywords'].apply(lambda x: " ".join(x)) +
+        movies['cast'].apply(lambda x: " ".join(x)) +
+        movies['crew']
+    )
+
+    tfidf = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(movies['tags'])
+    cosine_sim = cosine_similarity(tfidf_matrix)
+
+    return movies, cosine_sim
+
+movies, cosine_sim = load_and_process_data()
 
 
-# Load the processed data and similarity matrix
-with open('movie_data.pkl', 'rb') as file:
-    movies, cosine_sim = pickle.load(file)
+
+
+
 
 # Function to get movie recommendations
-def get_recommendations(title, cosine_sim=cosine_sim):
+def get_recommendations(title):
     idx = movies[movies['title'] == title].index[0]
     sim_scores = list(enumerate(cosine_sim[idx]))
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_scores = sim_scores[1:11]  # Get top 10 similar movies
+    sim_scores = sim_scores[1:11]
     movie_indices = [i[0] for i in sim_scores]
     return movies[['title', 'movie_id']].iloc[movie_indices]
+
 
 # Fetch movie poster from TMDB API
 
